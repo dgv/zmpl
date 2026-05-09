@@ -272,7 +272,7 @@ pub fn coerceString(self: *Data, value: anytype) ![]const u8 {
         .comptime_int => .default,
         .null => .none,
         .optional => if (@TypeOf(value) == ?[]const u8) .optional_string else .optional_default,
-        .@"union" => |_| blk: {
+        .@"union" => blk: {
             break :blk switch (@TypeOf(value)) {
                 inline else => |capture| if (@hasField(capture, "toString")) .zmpl_union else .default,
             };
@@ -1649,11 +1649,11 @@ pub const DateTime = struct {
 };
 
 pub const Object = struct {
-    hashmap: std.StringArrayHashMap(*Value),
+    hashmap: std.StringArrayHashMapUnmanaged(*Value),
     allocator: std.mem.Allocator,
 
     pub fn init(arena: std.mem.Allocator) Object {
-        return .{ .hashmap = std.StringArrayHashMap(*Value).init(arena), .allocator = arena };
+        return .{ .hashmap = .empty, .allocator = arena };
     }
 
     pub fn deinit(self: *Object) void {
@@ -1661,7 +1661,7 @@ pub const Object = struct {
         while (it.next()) |entry| {
             entry.value_ptr.*.deinit();
         }
-        self.hashmap.clearAndFree();
+        self.hashmap.clearAndFree(self.allocator);
     }
 
     /// Recursively compares equality of keypairs with another `Object`.
@@ -1703,7 +1703,7 @@ pub const Object = struct {
     pub fn put(self: *Object, key: []const u8, value: anytype) !PutAppend(@TypeOf(value)) {
         const zmpl_value = try zmplValue(value, self.allocator);
         const key_dupe = try self.allocator.dupe(u8, key);
-        try self.hashmap.put(key_dupe, zmpl_value);
+        try self.hashmap.put(self.allocator, key_dupe, zmpl_value);
         if (PutAppend(@TypeOf(value)) != void) return zmpl_value;
     }
 
@@ -1842,7 +1842,7 @@ pub const Object = struct {
             if (current_object.hashmap.get(key)) |capture| {
                 switch (capture.*) {
                     .object => |obj| current_object = obj,
-                    else => |*val| return if (depth == keys.len) return val else null,
+                    else => |*val| return if (depth == keys.len) val else null,
                 }
             } else return null;
         }
@@ -1881,7 +1881,9 @@ pub const Object = struct {
     pub fn items(self: Object) []const Item {
         var items_array: ArrayList(Item) = .empty;
         defer items_array.deinit(self.allocator);
-        for (self.hashmap.keys(), self.hashmap.values()) |key, value| {
+        const key_slice = self.hashmap.keys();
+        const value_slice = self.hashmap.values();
+        for (key_slice, value_slice) |key, value| {
             items_array.append(self.allocator, .{ .key = key, .value = value }) catch @panic("OOM");
         }
         return items_array.toOwnedSlice(self.allocator) catch @panic("OOM");
@@ -1895,9 +1897,9 @@ pub const Object = struct {
     ) anyerror!void {
         try highlight(writer, .open_object, .{}, options.color);
         if (options.pretty) try writer.writeByte('\n');
-        const keys = self.hashmap.keys();
+        const key_slice = self.hashmap.keys();
 
-        for (keys, 0..) |key, index| {
+        for (key_slice, 0..) |key, index| {
             if (options.pretty) try writer.writeBytesNTimes(indent, level + 1);
             var field = Field{ .allocator = self.allocator, .value = key };
             try field.toJson(writer, options);
@@ -1905,7 +1907,7 @@ pub const Object = struct {
             if (options.pretty) try writer.writeByte(' ');
             var value = self.hashmap.get(key).?;
             try value._toJson(writer, options, level + 1);
-            if (index + 1 < keys.len) try writer.writeAll(",");
+            if (index + 1 < key_slice.len) try writer.writeAll(",");
             if (options.pretty) try writer.writeByte('\n');
         }
         if (options.pretty) try writer.writeBytesNTimes(indent, level);

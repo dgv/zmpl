@@ -11,8 +11,9 @@ pub fn printSourceInfo(
     err: anyerror,
     stack_trace: *std.builtin.StackTrace,
 ) !void {
-    const debug_info = std.debug.getSelfDebugInfo() catch return err;
-    const source_location = (zmplSourceLocation(io, allocator, debug_info, stack_trace, err) catch
+    const builtin = @import("builtin");
+    if (builtin.strip_debug_info) return err;
+    const source_location = (zmplSourceLocation(io, allocator, stack_trace, err) catch
         return err) orelse
         return err;
     try debugSourceLocation(io, allocator, source_location);
@@ -21,12 +22,12 @@ pub fn printSourceInfo(
 fn zmplSourceLocation(
     io: std.Io,
     allocator: Allocator,
-    debug_info: *std.debug.SelfInfo,
     stack_trace: *std.builtin.StackTrace,
     err: anyerror,
 ) !?std.debug.SourceLocation {
     const builtin = @import("builtin");
     if (builtin.strip_debug_info) return error.MissingDebugInfo;
+    var debug_info = std.debug.SelfInfo.init;
     var frame_index: usize = 0;
     var frames_left: usize = @min(stack_trace.index, stack_trace.instruction_addresses.len);
 
@@ -37,11 +38,15 @@ fn zmplSourceLocation(
         const return_address = stack_trace.instruction_addresses[frame_index];
         const address = return_address - 1;
 
-        const symbol_info = debug_info.getSymbol(allocator, io, address) catch return err;
+        var symbols: std.ArrayList(std.debug.Symbol) = .empty;
+        defer symbols.deinit(allocator);
+        debug_info.getSymbols(io, allocator, allocator, address, false, &symbols) catch return err;
 
-        if (symbol_info.source_location) |source_location| {
-            if (std.mem.endsWith(u8, source_location.file_name, "zmpl.manifest.zig")) {
-                return source_location;
+        for (symbols.items) |symbol_info| {
+            if (symbol_info.source_location) |source_location| {
+                if (std.mem.endsWith(u8, source_location.file_name, "zmpl.manifest.zig")) {
+                    return source_location;
+                }
             }
         }
     }
