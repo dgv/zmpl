@@ -1,14 +1,13 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
-const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator;
-const ArenaAllocator = std.heap.ArenaAllocator;
-const assert = std.debug.assert;
-
 const Manifest = @import("Manifest.zig");
 const Template = @import("Template.zig");
 const zmpl_options = @import("zmpl_options");
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.arena.allocator();
+    const io = init.io;
+
     const options_fields = switch (@typeInfo(zmpl_options)) {
         .@"struct" => |info| info.fields,
         else => @compileError("Invalid type for template constants, expected struct, found: " ++
@@ -29,19 +28,7 @@ pub fn main() !void {
         }
     }
 
-    var gpa: GeneralPurposeAllocator(.{}) = .init;
-    defer assert(gpa.deinit() == .ok);
-
-    const gpa_allocator = gpa.allocator();
-
-    var arena: ArenaAllocator = .init(gpa_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var threaded = std.Io.Threaded.init_single_threaded;
-    const io = threaded.io();
-
-    const args = try std.process.argsAlloc(allocator);
+    const args = try std.process.Args.toSlice(init.minimal.args, allocator);
 
     const manifest_path = args[1];
 
@@ -95,5 +82,5 @@ pub fn main() !void {
 }
 
 test {
-    _ = std.testing.refAllDeclsRecursive(@This());
+    _ = std.testing.refAllDecls(@This());
 }

@@ -117,7 +117,14 @@ pub fn compile(
             options,
         );
     }
-    std.debug.print("[zmpl] Compiled {} template(s)\n", .{self.template_paths.len});
+    //std.debug.print("[zmpl] Compiled {} template(s)\n", .{self.template_paths.len});
+    // using stdout instead of stderr (std.debug.print).
+    // zig 0.16's build system captures stderr from run steps in .check mode and
+    // prints "failed command:" even on success, because result_failed_command is
+    // never cleared. Using stdout avoids this spurious output.
+    var stdout_msg: [128]u8 = undefined;
+    const msg_len = (std.fmt.bufPrint(&stdout_msg, "[zmpl] Compiled {} template(s)\n", .{self.template_paths.len}) catch unreachable).len;
+    std.Io.File.writeStreamingAll(std.Io.File.stdout(), io, stdout_msg[0..msg_len]) catch {};
     // placeholder
 
     for (template_defs.items) |template_def|

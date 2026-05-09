@@ -116,17 +116,21 @@ pub fn tokenizeRetainToken(input: []const u8, token: []const u8) RetainTokenIter
     return .{ .index = 0, .input = input, .token = token };
 }
 
+var global_prng = std.Random.DefaultPrng.init(0);
+
 /// Generate a random variable name with enough entropy to be considered unique.
 pub fn generateVariableName(buf: *[32]u8) void {
     const first_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const any_chars = "0123456789" ++ first_chars;
 
+    const random = global_prng.random();
+
     for (0..3) |index| {
-        buf[index] = first_chars[std.crypto.random.intRangeAtMost(u8, 0, first_chars.len - 1)];
+        buf[index] = first_chars[random.uintLessThan(u8, @intCast(first_chars.len))];
     }
 
     for (3..32) |index| {
-        buf[index] = any_chars[std.crypto.random.intRangeAtMost(u8, 0, any_chars.len - 1)];
+        buf[index] = any_chars[random.uintLessThan(u8, @intCast(any_chars.len))];
     }
 }
 
@@ -178,7 +182,7 @@ pub fn chomp(input: []const u8) []const u8 {
 /// Normalize a template path for storing in a template lookup map.
 /// Strips root template path, forces posix-style path separators, and strips extension.
 pub fn templatePathStore(allocator: Allocator, root: []const u8, path: []const u8) ![]const u8 {
-    const relative = try std.fs.path.relative(allocator, root, path);
+    const relative = try std.fs.path.relative(allocator, ".", null, root, path);
     defer allocator.free(relative);
 
     const normalized = try std.mem.replaceOwned(u8, allocator, relative, "\\", "/");

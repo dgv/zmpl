@@ -1,15 +1,13 @@
 const std = @import("std");
 const ArenaAllocator = std.heap.ArenaAllocator;
-const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator;
 const Writer = std.Io.Writer;
 const Allocator = std.mem.Allocator;
 
 const zmpl = @import("zmpl");
 
 pub fn main() !void {
-    var gpa: GeneralPurposeAllocator(.{}) = .init;
-    const allocator = gpa.allocator();
-    var arena: ArenaAllocator = .init(allocator);
+    const gpa: Allocator = .{ .vtable = &std.heap.SmpAllocator.vtable, .context = undefined };
+    var arena: ArenaAllocator = .init(gpa);
 
     var data = zmpl.Data.init(arena.allocator());
     // https://github.com/json-iterator/test-data/blob/master/large-file.json
